@@ -1,16 +1,40 @@
-# This is a sample Python script.
+import datetime
 
-# Press Shift+F10 to execute it or replace it with your code.
-# Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
-
-
-def print_hi(name):
-    # Use a breakpoint in the code line below to debug your script.
-    print(f'Hi, {name}')  # Press Ctrl+F8 to toggle the breakpoint.
+from flask import Flask, render_template
 
 
-# Press the green button in the gutter to run the script.
+app = Flask(__name__)
+app.config['SECRET_KEY'] = 'vnkdjnfjknfl1232#'
+
+
+@app.route('/')
+# TODO def show_all_mess():
+def show_all_mess():
+    return "200"
+
+
+@app.route('/send_mess')
+def send_mess(sender="", reciver="", mess="", subject=""):
+    # TODO connect to db and send all info
+    date = datetime.datetime.now()
+    print(date)
+    return str(date)
+
+
+@app.route('/show_all_unreaded_mess')
+def show_all_unreaded_mess(sender, reciver, mess, subject, date):
+    return "200"
+
+
+@app.route('/read_mess')
+def read_mess(sender, reciver, mess, subject, date):
+    return "200"
+
+
+@app.route('/delete_mess')
+def delete_mess(sender, reciver, mess, subject, date):
+    return
+
+
 if __name__ == '__main__':
-    print_hi('PyCharm')
-
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
+    app.run(host='0.0.0.0',debug=True)
