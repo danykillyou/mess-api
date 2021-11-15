@@ -18,17 +18,17 @@ def send_mess(sender="", reciver="", mess="", subject=""):
     # TODO connect to db and send all info
     date = datetime.datetime.now()
     print(date)
-    return '200'
+    return str(date)
 
 
 @app.route('/show_all_unreaded_mess')
 def show_all_unreaded_mess(sender, reciver, mess, subject, date):
-    return
+    return "200"
 
 
 @app.route('/read_mess')
 def read_mess(sender, reciver, mess, subject, date):
-    return
+    return "200"
 
 
 @app.route('/delete_mess')
