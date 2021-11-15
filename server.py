@@ -1,5 +1,5 @@
 from flask import Flask, render_template
-from flask_socketio import SocketIO
+
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'vnkdjnfjknfl1232#'
@@ -8,7 +8,7 @@ app.config['SECRET_KEY'] = 'vnkdjnfjknfl1232#'
 @app.route('/')
 # TODO def show_all_mess():
 def show_all_mess():
-    return
+    return "200"
 
 
 @app.route('/send_mess')
