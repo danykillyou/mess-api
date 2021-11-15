@@ -1,3 +1,5 @@
+import datetime
+
 from flask import Flask, render_template
 
 
@@ -12,28 +14,26 @@ def show_all_mess():
 
 
 @app.route('/send_mess')
-def send_mess(sender, reciver, mess, subject, date):
+def send_mess(sender="", reciver="", mess="", subject=""):
     # TODO connect to db and send all info
-    return
+    date = datetime.datetime.now()
+    print(date)
+    return '200'
 
 
 @app.route('/show_all_unreaded_mess')
-def send_mess(sender, reciver, mess, subject, date):
+def show_all_unreaded_mess(sender, reciver, mess, subject, date):
     return
 
 
 @app.route('/read_mess')
-def send_mess(sender, reciver, mess, subject, date):
+def read_mess(sender, reciver, mess, subject, date):
     return
 
 
 @app.route('/delete_mess')
-def send_mess(sender, reciver, mess, subject, date):
+def delete_mess(sender, reciver, mess, subject, date):
     return
-
-
-def messageReceived(methods=['GET', 'POST']):
-    print('message was received!!!')
 
 
 if __name__ == '__main__':
