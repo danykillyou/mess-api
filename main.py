@@ -34,10 +34,6 @@ class Message(db.Model):
                 "subject": self.subject, "time": self.time, "sender_status": self.sender_status,
                 "receiver_status": self.receiver_status}
 
-    # def read(self):
-    #     self.is_read = True
-    #     db.session.commit()
-
 
 @app.route('/')
 # TODO def show_all_mess():
