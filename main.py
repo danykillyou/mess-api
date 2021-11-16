@@ -3,7 +3,10 @@ import gunicorn
 from flask import Flask, render_template, request
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import or_, and_
+import os
+import hashlib
 
+salt = os.urandom(32)
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'vnkdjnfjknfl1232#'
 
@@ -15,9 +18,12 @@ db = SQLAlchemy(app)
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    password = db.Column(db.String(80), unique=True, nullable=False)
+    password = db.Column(db.LargeBinary(128), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
+    salt = db.Column(db.LargeBinary(80), nullable=False)
 
+    def print_all(self):
+        return {"id":self.id,"email":self.email,"password":self.password,"salt":self.salt}
 
 class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -35,10 +41,53 @@ class Message(db.Model):
                 "receiver_status": self.receiver_status}
 
 
+@app.route("/signup")
+def signup():
+    password = request.form["password"]
+    email = request.form["email"]
+    key = hashlib.pbkdf2_hmac('sha256',  # The hash digest algorithm for HMAC
+                              password=password.encode('utf-8'),  # Convert the password to bytes
+                              salt=salt,
+                              iterations=100000,)  # It is recommended to use at least 100,000 iterations of SHA-256
+
+    user = User(salt=salt, password=key, email=email)
+    print(f"salt : {salt}")
+
+    print(key)
+    db.session.add(user)
+    db.session.commit()
+    return user.email
+
+
+@app.route("/signin")
+def signin():
+    password = request.form["password"]
+    email = request.form["email"]
+
+    user =User.query.filter(User.email==email).first()
+    if user is None: return "email or password is wrong"
+    salt = user.salt
+    print(f"salt : {salt}")
+    key = hashlib.pbkdf2_hmac('sha256', password=password.encode('utf-8'), salt=salt, iterations=100000)
+    print(str(key)+"\n"
+          +str(user.password))
+    if user.password == key:
+        return show_all_mess(email)
+    return "False"
+
+
+@app.route("/all")
+def all():
+    users=User.query.all()
+    return str([user.print_all() for user in users])
+
 @app.route('/')
 # TODO def show_all_mess():
-def show_all_mess():
-    sender = request.form["sender"]
+def show_all_mess(email=""):
+    try:
+        sender = request.form["sender"]
+    except:
+        sender=email
     all_inbox = Message.query.filter(and_(Message.receiver == sender, Message.receiver_status != "deleted")).all()
     all_outbox = Message.query.filter(and_(Message.sender == sender, Message.sender_status != "deleted")).all()
     x = [mess.print_all() for mess in all_inbox]
@@ -96,7 +145,7 @@ def read_mess():
 
 @app.route('/delete_db')
 def delete_db():
-    Message.__table__.drop(db.engine)
+    User.__table__.drop(db.engine)
     return "ok"
 
 
