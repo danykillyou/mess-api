@@ -1,12 +1,12 @@
-import datetime
-import gunicorn
-from flask import Flask, render_template, request
+from urllib.parse import urlparse
+from flask import Flask, render_template, request, url_for, redirect
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import or_, and_
-import os
-import hashlib
+from sqlalchemy import or_, and_, DateTime
+import os, hashlib, datetime, gunicorn, uuid
 
-salt = os.urandom(32)
+from sqlalchemy.dialects.postgresql import UUID
+
+salt = b'\x15\\\xcd\x1c\xef\xbf8\xfb\xd542uG\xb2\xdd\xb8\xdcE`\xcd\x91\x93*R\x8c\xeaXb\xcc\x86\x9e\xe7'
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'vnkdjnfjknfl1232#'
 
@@ -15,15 +15,29 @@ app.config[
     'SQLALCHEMY_DATABASE_URI'] = 'postgresql://awakmsnbccrbfy:f3b3e4e1d86f1a2722f8011507c6ce84af6da8d812e6c7537266f32236401cb4@ec2-54-216-185-51.eu-west-1.compute.amazonaws.com:5432/dar0ufs7rl9a5h'
 db = SQLAlchemy(app)
 
+def check_authentication(mess_id,id):
+    user = User.query.filter(User.id == id).first()
+    # if user authenticated. this check guaranties that every user can change only his messages (prevent hacker attack)
+    if not user: return None
+    mess_receiver = Message.query.filter(
+            and_(Message.id == mess_id, Message.receiver == user.email, Message.receiver_status != "deleted")).first()
+    mess_sender = Message.query.filter(
+        and_(Message.id == mess_id, Message.sender == user.email, Message.sender_status != "deleted")).first()
+    return {"sender": mess_sender, "receiver": mess_receiver}
+    # check if message is received by current user. if true change receiver_status to read and return it
 
+    # if mess:
+    #     mess.receiver_status = "read"
+    #     db.session.commit()
+    #     return mess
 class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.String(120), primary_key=True)
     password = db.Column(db.LargeBinary(128), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    salt = db.Column(db.LargeBinary(80), nullable=False)
 
     def print_all(self):
-        return {"id":self.id,"email":self.email,"password":self.password,"salt":self.salt}
+        return {"id": self.id, "email": self.email, "password": self.password}
+
 
 class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -31,85 +45,88 @@ class Message(db.Model):
     receiver = db.Column(db.String(80), nullable=False)
     mess = db.Column(db.String(80), nullable=False)
     subject = db.Column(db.String(80), nullable=False)
-    time = db.Column(db.String(80), nullable=False)
+    time = db.Column(DateTime, nullable=False)
     receiver_status = db.Column(db.String(80), nullable=False)  # deleted,read,unread
     sender_status = db.Column(db.String(80), nullable=False)  # sent,deleted
+    sender_id = db.Column(db.String(80), nullable=False)
 
     def print_all(self):
         return {"id": self.id, "sender": self.sender, "receiver": self.receiver,
                 "subject": self.subject, "time": self.time, "sender_status": self.sender_status,
-                "receiver_status": self.receiver_status}
+                "receiver_status": self.receiver_status, "sender_id": self.sender_id}
 
 
 @app.route("/signup")
 def signup():
     password = request.form["password"]
-    email = request.form["email"]
+    email = request.form["sender"]
     key = hashlib.pbkdf2_hmac('sha256',  # The hash digest algorithm for HMAC
                               password=password.encode('utf-8'),  # Convert the password to bytes
                               salt=salt,
-                              iterations=100000,)  # It is recommended to use at least 100,000 iterations of SHA-256
-
-    user = User(salt=salt, password=key, email=email)
-    print(f"salt : {salt}")
-
+                              iterations=100000, )  # It is recommended to use at least 100,000 iterations of SHA-256
+    # I used guid as token insted of email or simple id order, for high security level
+    user = User(id=str(uuid.uuid4())
+                , password=key, email=email)
     print(key)
     db.session.add(user)
     db.session.commit()
-    return user.email
+    return user.email + "\n now you can sign in"
 
 
 @app.route("/signin")
 def signin():
     password = request.form["password"]
-    email = request.form["email"]
+    email = request.form["sender"]
 
-    user =User.query.filter(User.email==email).first()
+    user = User.query.filter(User.email == email).first()
     if user is None: return "email or password is wrong"
-    salt = user.salt
-    print(f"salt : {salt}")
     key = hashlib.pbkdf2_hmac('sha256', password=password.encode('utf-8'), salt=salt, iterations=100000)
-    print(str(key)+"\n"
-          +str(user.password))
+    print(str(key) + "\n"
+          + str(user.password))
     if user.password == key:
-        return show_all_mess(email)
+        # return redirect(url_for(f"show_all_mess", email=str(request.form['sender'])))
+        return str(user.id)
     return "False"
 
 
 @app.route("/all")
 def all():
-    users=User.query.all()
+    users = User.query.all()
     return str([user.print_all() for user in users])
 
-@app.route('/')
-# TODO def show_all_mess():
-def show_all_mess(email=""):
-    try:
-        sender = request.form["sender"]
-    except:
-        sender=email
-    all_inbox = Message.query.filter(and_(Message.receiver == sender, Message.receiver_status != "deleted")).all()
-    all_outbox = Message.query.filter(and_(Message.sender == sender, Message.sender_status != "deleted")).all()
-    x = [mess.print_all() for mess in all_inbox]
-    y = [mess.print_all() for mess in all_outbox]
 
-    # x = [mess.is_read==True , for mess in all]
-    # print(a)
-    # print(x)
-    return {"inbox": x, "outbox": y}
+@app.route('/')
+# TODO exeption for all errors
+def show_all_mess():
+    id = request.form["id"]
+    all_outbox = Message.query.filter(and_(Message.sender_id == id, Message.sender_status != "deleted")).all()
+    if all_outbox:
+        print(all_outbox[0].sender)
+        my_email = all_outbox[0].sender
+    else:
+        user = User.query.filter(User.id == id).first()
+        if not user: return {"data": "your token is not valid"}
+        my_email = user.email
+    all_inbox = Message.query.filter(and_(Message.receiver == my_email, Message.receiver_status != "deleted")).all()
+    inbox = [mess.print_all() for mess in all_inbox]
+    outbox = [mess.print_all() for mess in all_outbox]
+
+    return {"inbox": inbox, "outbox": outbox}
 
 
 @app.route('/send_mess')
 def send_mess():
     # TODO connect to db and send all info
-    sender = request.form["sender"]
+    id = request.form["id"]
     receiver = request.form["receiver"]
     subject = request.form["subject"]
     mess = request.form["mess"]
     date = datetime.datetime.now()
+    user = User.query.filter(User.id == id).first()
+    sender = user.email
     # print(str(date))
-    message = Message(sender=sender, receiver=receiver, mess=mess, subject=subject, time=str(date),
-                      receiver_status="unread", sender_status="sent")
+    message = Message(sender=sender, receiver=receiver, mess=mess, subject=subject, time=date,
+                      receiver_status="unread", sender_status="sent", sender_id=id)
     db.session.add(message)
     db.session.commit()
     return message.mess
@@ -117,58 +134,58 @@ def send_mess():
 
 @app.route('/show_all_unreaded_mess')
 def show_all_unreaded_mess():
-    sender = request.form["sender"]
-    all = Message.query.filter(Message.receiver == sender).filter(Message.receiver_status == "unread").filter()
+    id = request.form["id"]
+    user = User.query.filter(User.id == id).first()
+    if not user: return {"data": "your token is not valid"}
+    my_email = user.email
+    all = Message.query.filter(and_(Message.receiver == my_email, Message.receiver_status == "unread")).all()
     print(all)
     x = [mess.print_all() for mess in all]
-    return str(x)
+    return {"inbox":x}
 
 
 @app.route('/read_mess')
 def read_mess():
-    sender = request.form["sender"]
-    mess_id = request.form["id"]
-    mess = Message.query.filter(
-        and_(Message.id == mess_id, Message.sender == sender, Message.sender_status != "deleted")).first()
-    if mess is None:
-        mess = Message.query.filter(
-            and_(Message.id == mess_id, Message.receiver == sender, Message.receiver_status != "deleted")).first()
-
-        if mess is not None:
-            mess.receiver_status = "read"
-            db.session.commit()
-            return mess.mess
-    else:
-        return mess.mess
+    messes = check_authentication(request.form["mess_id"], request.form["id"])
+    if not messes: return {"data": "your token is not valid"}
+    if messes["receiver"]:
+        messes["receiver"].receiver_status = "read"
+        db.session.commit()
+        return messes["receiver"].mess
+    elif messes["sender"]:
+        return messes["sender"]
     return "no message"
 
 
 @app.route('/delete_db')
 def delete_db():
-    User.__table__.drop(db.engine)
+    Message.__table__.drop(db.engine)
     return "ok"
 
 
 @app.route('/delete_mess')
 def delete_mess():
-    sender = request.form["sender"]
-    mess_id = request.form["id"]
-    mess = Message.query.filter(
-        and_(Message.id == mess_id, Message.sender == sender, Message.sender_status != "deleted")).first()
-    if mess is None:
-        mess = Message.query.filter(
-            and_(Message.id == mess_id, Message.receiver == sender, Message.receiver_status != "deleted")).first()
+    messes = check_authentication(request.form["mess_id"], request.form["id"])
+    if not messes: return {"data": "your token is not valid"}
+    if messes["receiver"]:
+        messes["receiver"].receiver_status = "deleted"
+    if messes["sender"]:
+        messes["sender"].sender_status = "deleted"
+    db.session.commit()
+    return {"data": "message deleted"}
 
-        if mess is not None:
-            mess.receiver_status = "deleted"
-            db.session.commit()
-            return mess.mess
-    else:
-        mess.sender_status = "deleted"
-        db.session.commit()
 
-        return mess.mess
-    return "cant delete message"
+    # # check if message is sent by current user. if true delete it
+    # mess_sender = Message.query.filter(and_(Message.id == mess_id, Message.sender_id == id)).first()
+    # if mess_sender:
+    #     mess_sender.sender_status = "deleted"
+    #     db.session.commit()
+    # # check if message is received by current user. if true delete it
+    # mess_receiver = Message.query.filter(and_(Message.id == mess_id, Message.receiver == user.email)).first()
+    # if mess_receiver:
+    #     mess_receiver.receiver_status = "deleted"
+    #     db.session.commit()
+    # return
 
 
 if __name__ == '__main__':
