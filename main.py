@@ -160,7 +160,7 @@ def read_mess():
             db.session.commit()
             return messes["receiver"].mess
         elif messes["sender"]:
-            return messes["sender"]
+            return messes["sender"].mess
         return "no message"
     except Exception as e:
         return str(e.args)
