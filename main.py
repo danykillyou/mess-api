@@ -1,3 +1,4 @@
+import sqlalchemy
 from flask import Flask, request
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import or_, and_, DateTime
@@ -57,11 +58,11 @@ class Message(db.Model):
                 "receiver_status": self.receiver_status}
 
 
-@app.route("/signup")
+@app.route("/signup",methods=["POST"])
 def signup():
     try:
         password = request.form["password"]
-        email = request.form["sender"]
+        email = request.form["email"]
         key = hashlib.pbkdf2_hmac('sha256',  # The hash digest algorithm for HMAC
                                   password=password.encode('utf-8'),  # Convert the password to bytes
                                   salt=salt,  # Randomly generated sequence for security
@@ -73,6 +74,8 @@ def signup():
         db.session.add(user)
         db.session.commit()
         return user.email + "\n now you can sign in"
+    except sqlalchemy.exc.IntegrityError as e:
+        return str(e.args).replace(' Key','').replace('(','').replace(')','').split(r"\n")[1]
     except Exception as e:
         return str(e.args)
 
@@ -80,7 +83,7 @@ def signup():
 @app.route("/signin")
 def signin():
     password = request.form["password"]
-    email = request.form["sender"]
+    email = request.form["email"]
     # Check if user exist in DataBase
     user = User.query.filter(User.email == email).first()
     if user is None: return "email or password is wrong"
@@ -95,9 +98,9 @@ def signin():
     return "email or password is wrong"
 
 
-@app.route('/')
+@app.route('/get_all_mess')
 # TODO exception for all errors
-def show_all_mess():
+def get_all_mess():
     try:
         id = request.form["id"]
         user = User.query.filter(User.id == id).first()
@@ -112,7 +115,7 @@ def show_all_mess():
         return str(e.args)
 
 
-@app.route('/send_mess')
+@app.route('/send_mess',methods=["POST"])
 def send_mess():
     try:
         id = request.form["id"]
@@ -150,7 +153,7 @@ def show_all_unreaded_mess():
 def read_mess():
     try:
         messes = check_authentication(request.form["mess_id"], request.form["id"])
-        if messes: return {"data": "your token is not valid or you don't have the authorization to this request"}
+        if not messes: return {"data": "your token is not valid or you don't have the authorization to this request"}
         if messes["receiver"]:
             messes["receiver"].receiver_status = "read"
             db.session.commit()
@@ -168,7 +171,7 @@ def delete_db():
     return "ok"
 
 
-@app.route('/delete_mess')
+@app.route('/delete_mess',methods=["POST"])
 def delete_mess():
     try:
         messes = check_authentication(request.form["mess_id"], request.form["id"])
